@@ -589,3 +589,32 @@ Start with Phase 2: Database setup and design.
 **Estimated Time:** 30 minutes for database, 1 hour for schema design  
 
 ---
+Phase 2: Database Setup (COMPLETE) ✅
+What You Built:
+Created PostgreSQL Database
+Database name: taskhub_db
+Connected and ready
+Created 4 Database Tables:
+tenants — Organizations
+users — People (with password_hash, email, tenant_id)
+projects — Task groups
+tasks — Individual to-dos (with status, priority, assigned_to)
+Added Database Indexes (6 indexes for performance)
+Users by tenant_id
+Users by email
+Projects by tenant_id
+Tasks by tenant_id
+Tasks by project_id
+Tasks by assigned_to
+Connected Backend to Database
+Created backend/src/db.ts — Database connection file
+Updated backend/src/server.ts — Added database test endpoint
+Installed Packages
+pg — PostgreSQL driver
+@types/pg — TypeScript types
+Tested It Works
+✅ http://localhost:3001/ — Backend running
+✅ http://localhost:3001/db-test — Database connected
+Committed to Git
+1 new commit: feat: create database schema and connect backend to PostgreSQL
+Total commits: 4
