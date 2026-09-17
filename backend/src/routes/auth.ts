@@ -17,7 +17,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     if (!result.success) {
       return res.status(400).json({ 
         error: 'Validation failed',
-        details: result.error.errors 
+        details: result.error.issues
       });
     }
 
@@ -136,7 +136,7 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!result.success) {
       return res.status(400).json({ 
         error: 'Validation failed',
-        details: result.error.errors 
+        details: result.error.issues 
       });
     }
 
