@@ -5,7 +5,6 @@ import { createTaskSchema, updateTaskSchema } from '../validators/task.validator
 
 const router = Router();
 
-// All routes require authentication
 router.use(authenticate);
 
 // ─────────────────────────────────────────
@@ -16,48 +15,40 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.user!;
 
-    // Query params for filtering
     const { status, assignee, projectId, search, page = '1', limit = '10' } = req.query;
 
-    // Build dynamic query
     const conditions: string[] = ['t.tenant_id = $1', 't.deleted_at IS NULL'];
     const values: any[] = [tenantId];
     let paramCount = 1;
 
-    // Filter by status
     if (status) {
       paramCount++;
       conditions.push(`t.status = $${paramCount}`);
       values.push(status);
     }
 
-    // Filter by assignee
     if (assignee) {
       paramCount++;
       conditions.push(`t.assigned_to = $${paramCount}`);
       values.push(assignee);
     }
 
-    // Filter by project
     if (projectId) {
       paramCount++;
       conditions.push(`t.project_id = $${paramCount}`);
       values.push(projectId);
     }
 
-    // Search by title or description
     if (search) {
       paramCount++;
       conditions.push(`(t.title ILIKE $${paramCount} OR t.description ILIKE $${paramCount})`);
       values.push(`%${search}%`);
     }
 
-    // Pagination
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const offset = (pageNum - 1) * limitNum;
 
-    // Build WHERE clause
     const whereClause = conditions.join(' AND ');
 
     // Get total count
@@ -68,19 +59,23 @@ router.get('/', async (req: Request, res: Response) => {
 
     const total = parseInt(countResult.rows[0].count);
 
-    // Get tasks with pagination
     paramCount++;
     values.push(limitNum);
     paramCount++;
     values.push(offset);
 
+    // Get tasks with all related info
     const result = await pool.query(
-      `SELECT t.*, 
+      `SELECT t.*,
               p.name as project_name,
-              u.email as assigned_to_email
+              ten.slug as tenant_slug,
+              u.email as assigned_to_email,
+              cb.email as created_by_email
        FROM tasks t
        LEFT JOIN projects p ON t.project_id = p.id
+       LEFT JOIN tenants ten ON t.tenant_id = ten.id
        LEFT JOIN users u ON t.assigned_to = u.id
+       LEFT JOIN users cb ON t.created_by = cb.id
        WHERE ${whereClause}
        ORDER BY t.created_at DESC
        LIMIT $${paramCount - 1} OFFSET $${paramCount}`,
@@ -114,11 +109,15 @@ router.get('/:id', async (req: Request, res: Response) => {
     const result = await pool.query(
       `SELECT t.*,
               p.name as project_name,
-              u.email as assigned_to_email
+              ten.slug as tenant_slug,
+              u.email as assigned_to_email,
+              cb.email as created_by_email
        FROM tasks t
        LEFT JOIN projects p ON t.project_id = p.id
+       LEFT JOIN tenants ten ON t.tenant_id = ten.id
        LEFT JOIN users u ON t.assigned_to = u.id
-       WHERE t.id = $1 
+       LEFT JOIN users cb ON t.created_by = cb.id
+       WHERE t.id = $1
        AND t.tenant_id = $2
        AND t.deleted_at IS NULL`,
       [id, tenantId]
@@ -146,7 +145,6 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { tenantId, userId } = req.user!;
 
-    // Validate input
     const result = createTaskSchema.safeParse(req.body);
     if (!result.success) {
       return res.status(400).json({
@@ -171,7 +169,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const task = await pool.query(
-      `INSERT INTO tasks 
+      `INSERT INTO tasks
        (title, description, status, priority, project_id, tenant_id, assigned_to, due_date, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
@@ -197,7 +195,6 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const { tenantId } = req.user!;
     const { id } = req.params;
 
-    // Validate input
     const result = updateTaskSchema.safeParse(req.body);
     if (!result.success) {
       return res.status(400).json({
@@ -254,7 +251,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const { tenantId } = req.user!;
     const { id } = req.params;
 
-    // Check task exists
     const existing = await pool.query(
       'SELECT id FROM tasks WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
       [id, tenantId]

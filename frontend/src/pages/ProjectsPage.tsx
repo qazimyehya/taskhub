@@ -5,6 +5,18 @@ import Layout from '../components/layout/Layout';
 import api from '../api/axios';
 import { useAuthStore } from '../store/authStore';
 
+const statusColors: Record<string, string> = {
+  todo: '#f39c12',
+  in_progress: '#3498db',
+  done: '#2ecc71',
+};
+
+const priorityColors: Record<string, string> = {
+  low: '#95a5a6',
+  medium: '#e67e22',
+  high: '#e74c3c',
+};
+
 const ProjectsPage = () => {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
@@ -32,7 +44,7 @@ const ProjectsPage = () => {
     },
   });
 
-  // Fetch project members when project selected
+  // Fetch project detail (members + tasks)
   const { data: projectDetail } = useQuery({
     queryKey: ['project', selectedProject?.id],
     queryFn: async () => {
@@ -42,7 +54,17 @@ const ProjectsPage = () => {
     enabled: !!selectedProject,
   });
 
-  // Create project mutation
+  // Fetch tasks for selected project
+  const { data: tasksData } = useQuery({
+    queryKey: ['tasks', { projectId: selectedProject?.id }],
+    queryFn: async () => {
+      const res = await api.get(`/tasks?projectId=${selectedProject.id}&limit=50`);
+      return res.data;
+    },
+    enabled: !!selectedProject,
+  });
+
+  // Create project
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await api.post('/projects', data);
@@ -59,7 +81,7 @@ const ProjectsPage = () => {
     },
   });
 
-  // Delete project mutation
+  // Delete project
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       await api.delete(`/projects/${id}`);
@@ -70,7 +92,7 @@ const ProjectsPage = () => {
     },
   });
 
-  // Add member mutation
+  // Add member
   const addMemberMutation = useMutation({
     mutationFn: async ({ projectId, userId }: { projectId: number; userId: number }) => {
       const res = await api.post(`/projects/${projectId}/members`, { userId });
@@ -78,16 +100,18 @@ const ProjectsPage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', selectedProject?.id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 
-  // Remove member mutation
+  // Remove member
   const removeMemberMutation = useMutation({
     mutationFn: async ({ projectId, userId }: { projectId: number; userId: number }) => {
       await api.delete(`/projects/${projectId}/members/${userId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', selectedProject?.id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 
@@ -104,6 +128,7 @@ const ProjectsPage = () => {
   const members = projectDetail?.members || [];
   const memberIds = members.map((m: any) => m.id);
   const nonMembers = usersData?.users?.filter((u: any) => !memberIds.includes(u.id)) || [];
+  const tasks = tasksData?.tasks || [];
 
   return (
     <Layout>
@@ -234,26 +259,106 @@ const ProjectsPage = () => {
           )}
         </div>
 
-        {/* RIGHT: Project Members */}
+        {/* RIGHT: Project Detail */}
         {selectedProject && (
-          <div style={{ width: '350px' }}>
+          <div style={{ width: '380px' }}>
             <div style={{
               background: '#fff',
               borderRadius: '12px',
               padding: '20px',
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}>
-              <h3 style={{ margin: '0 0 16px' }}>
-                {selectedProject.name} — Members
+              <h3 style={{ margin: '0 0 20px', fontSize: '17px' }}>
+                {selectedProject.name}
               </h3>
 
-              {/* Current Members */}
+              {/* TASKS SECTION */}
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{
+                  margin: '0 0 10px',
+                  fontSize: '12px',
+                  color: '#888',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  Tasks ({tasks.length})
+                </h4>
+
+                {tasks.length === 0 ? (
+                  <p style={{ color: '#aaa', fontSize: '13px', fontStyle: 'italic' }}>
+                    No tasks in this project yet
+                  </p>
+                ) : (
+                  tasks.map((task: any) => (
+                    <div
+                      key={task.id}
+                      style={{
+                        padding: '10px 12px',
+                        background: '#f9f9f9',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        borderLeft: `3px solid ${statusColors[task.status] || '#ddd'}`,
+                      }}
+                    >
+                      <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: '4px' }}>
+                        {task.title}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{
+                          background: statusColors[task.status] + '22',
+                          color: statusColors[task.status],
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                        }}>
+                          {task.status === 'in_progress' ? 'In Progress' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                        </span>
+                        {task.priority && (
+                          <span style={{
+                            background: priorityColors[task.priority] + '22',
+                            color: priorityColors[task.priority],
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                          }}>
+                            {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                          </span>
+                        )}
+                        {task.assigned_to_email && (
+                          <span style={{
+                            background: '#f0f0f0',
+                            color: '#555',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontSize: '11px',
+                          }}>
+                            👤 {task.assigned_to_email}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* DIVIDER */}
+              <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '0 0 20px' }} />
+
+              {/* MEMBERS SECTION */}
               <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#888', textTransform: 'uppercase' }}>
-                  Current Members ({members.length})
+                <h4 style={{
+                  margin: '0 0 10px',
+                  fontSize: '12px',
+                  color: '#888',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  Members ({members.length})
                 </h4>
                 {members.length === 0 ? (
-                  <p style={{ color: '#888', fontSize: '13px' }}>No members yet</p>
+                  <p style={{ color: '#aaa', fontSize: '13px' }}>No members yet</p>
                 ) : (
                   members.map((member: any) => (
                     <div
@@ -298,10 +403,16 @@ const ProjectsPage = () => {
                 )}
               </div>
 
-              {/* Add Members (admin only) */}
+              {/* ADD MEMBERS */}
               {user?.role === 'admin' && nonMembers.length > 0 && (
                 <div>
-                  <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#888', textTransform: 'uppercase' }}>
+                  <h4 style={{
+                    margin: '0 0 10px',
+                    fontSize: '12px',
+                    color: '#888',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
                     Add Members
                   </h4>
                   {nonMembers.map((u: any) => (

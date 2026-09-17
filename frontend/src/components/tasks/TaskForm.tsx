@@ -11,6 +11,7 @@ const taskSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).optional(),
   projectId: z.number(),
   assignedTo: z.number().optional(),
+  dueDate: z.string().optional(),
 });
 
 type TaskFormData = z.infer<typeof taskSchema>;
@@ -23,16 +24,22 @@ interface User {
   role: string;
 }
 
+interface Project {
+  id: number;
+  name: string;
+}
+
 interface TaskFormProps {
   task?: Task | null;
   projectId: number;
   users: User[];
+  projects: Project[];
   onSubmit: (data: TaskFormData) => void;
   onCancel: () => void;
   loading?: boolean;
 }
 
-const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskFormProps) => {
+const TaskForm = ({ task, projectId, users, projects, onSubmit, onCancel, loading }: TaskFormProps) => {
   const { register, handleSubmit, reset, formState: { errors } } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
     defaultValues: {
@@ -42,6 +49,7 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
       priority: (task?.priority as any) || 'medium',
       projectId: task?.project_id || projectId,
       assignedTo: task?.assigned_to || undefined,
+      dueDate: task?.due_date ? task.due_date.split('T')[0] : '',
     },
   });
 
@@ -53,6 +61,7 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
       priority: (task?.priority as any) || 'medium',
       projectId: task?.project_id || projectId,
       assignedTo: task?.assigned_to || undefined,
+      dueDate: task?.due_date ? task.due_date.split('T')[0] : '',
     });
   }, [task]);
 
@@ -64,6 +73,14 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
     fontSize: '14px',
     boxSizing: 'border-box' as const,
     marginTop: '4px',
+    background: '#fff',
+  };
+
+  const labelStyle = {
+    fontSize: '14px',
+    fontWeight: 500,
+    display: 'block',
+    marginBottom: '2px',
   };
 
   return (
@@ -81,22 +98,35 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
         padding: '32px',
         borderRadius: '12px',
         width: '100%',
-        maxWidth: '480px',
+        maxWidth: '500px',
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+        maxHeight: '90vh',
+        overflowY: 'auto',
       }}>
-        <h2 style={{ margin: '0 0 24px' }}>
+        <h2 style={{ margin: '0 0 24px', fontSize: '22px' }}>
           {task ? 'Edit Task' : 'Create Task'}
         </h2>
 
         <form onSubmit={handleSubmit(onSubmit)}>
+
+          {/* Title */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ fontSize: '14px', fontWeight: 500 }}>Title *</label>
-            <input {...register('title')} placeholder="Task title" style={inputStyle} />
-            {errors.title && <span style={{ color: '#e74c3c', fontSize: '12px' }}>{errors.title.message}</span>}
+            <label style={labelStyle}>Title *</label>
+            <input
+              {...register('title')}
+              placeholder="Task title"
+              style={inputStyle}
+            />
+            {errors.title && (
+              <span style={{ color: '#e74c3c', fontSize: '12px' }}>
+                {errors.title.message}
+              </span>
+            )}
           </div>
 
+          {/* Description */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ fontSize: '14px', fontWeight: 500 }}>Description</label>
+            <label style={labelStyle}>Description</label>
             <textarea
               {...register('description')}
               placeholder="Task description"
@@ -105,9 +135,38 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          {/* Project */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Project *</label>
+            <select
+              {...register('projectId', {
+                setValueAs: (v) => parseInt(v)
+              })}
+              style={inputStyle}
+            >
+              <option value="">-- Select a project --</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            {errors.projectId && (
+              <span style={{ color: '#e74c3c', fontSize: '12px' }}>
+                Please select a project
+              </span>
+            )}
+          </div>
+
+          {/* Status + Priority */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '12px',
+            marginBottom: '16px'
+          }}>
             <div>
-              <label style={{ fontSize: '14px', fontWeight: 500 }}>Status</label>
+              <label style={labelStyle}>Status</label>
               <select {...register('status')} style={inputStyle}>
                 <option value="todo">Todo</option>
                 <option value="in_progress">In Progress</option>
@@ -115,7 +174,7 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '14px', fontWeight: 500 }}>Priority</label>
+              <label style={labelStyle}>Priority</label>
               <select {...register('priority')} style={inputStyle}>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -124,8 +183,19 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
             </div>
           </div>
 
+          {/* Due Date */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Due Date</label>
+            <input
+              {...register('dueDate')}
+              type="date"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Assign To */}
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ fontSize: '14px', fontWeight: 500 }}>Assign To</label>
+            <label style={labelStyle}>Assign To</label>
             <select
               {...register('assignedTo', {
                 setValueAs: (v) => v === '' ? undefined : parseInt(v)
@@ -135,13 +205,18 @@ const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskF
               <option value="">Unassigned</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.first_name} {user.last_name} ({user.email}) — {user.role}
+                  {user.first_name} {user.last_name} — {user.role}
                 </option>
               ))}
             </select>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          {/* Buttons */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'flex-end'
+          }}>
             <button
               type="button"
               onClick={onCancel}

@@ -28,17 +28,20 @@ const TasksPage = () => {
     limit: 10,
   };
 
+  // Fetch tasks
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['tasks', filters],
     queryFn: () => getTasks(filters),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
+  // Fetch projects for form dropdown
   const { data: projectsData } = useQuery({
     queryKey: ['projects'],
     queryFn: getProjects,
   });
 
+  // Fetch users for assignment dropdown
   const { data: usersData } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
@@ -49,6 +52,7 @@ const TasksPage = () => {
 
   const defaultProjectId = projectsData?.projects[0]?.id || 0;
 
+  // Create task mutation with optimistic update
   const createMutation = useMutation({
     mutationFn: createTask,
     onMutate: async (newTask) => {
@@ -70,7 +74,7 @@ const TasksPage = () => {
       }));
       return { previous };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
@@ -79,6 +83,7 @@ const TasksPage = () => {
     },
   });
 
+  // Update task mutation with optimistic update
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateTask(id, data),
     onMutate: async ({ id, data }) => {
@@ -86,11 +91,13 @@ const TasksPage = () => {
       const previous = queryClient.getQueryData(['tasks', filters]);
       queryClient.setQueryData(['tasks', filters], (old: any) => ({
         ...old,
-        tasks: old?.tasks?.map((t: Task) => t.id === id ? { ...t, ...data } : t),
+        tasks: old?.tasks?.map((t: Task) =>
+          t.id === id ? { ...t, ...data } : t
+        ),
       }));
       return { previous };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
@@ -100,6 +107,7 @@ const TasksPage = () => {
     },
   });
 
+  // Delete task mutation with optimistic update
   const deleteMutation = useMutation({
     mutationFn: deleteTask,
     onMutate: async (id) => {
@@ -111,7 +119,7 @@ const TasksPage = () => {
       }));
       return { previous };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
@@ -143,11 +151,18 @@ const TasksPage = () => {
     }
   };
 
+  const tasks = data?.tasks ?? [];
   const pagination = data?.pagination;
 
   return (
     <Layout>
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Header */}
+      <div style={{
+        marginBottom: '24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
         <h2 style={{ margin: 0, fontSize: '24px' }}>Tasks</h2>
         <button
           onClick={() => { setEditingTask(null); setShowForm(true); }}
@@ -166,36 +181,70 @@ const TasksPage = () => {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Search and Filters */}
+      <div style={{
+        display: 'flex',
+        gap: '16px',
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        alignItems: 'center'
+      }}>
         <SearchInput onSearch={setSearch} />
-        <TaskFilters status={status} onStatusChange={(s) => { setStatus(s); setPage(1); }} />
+        <TaskFilters
+          status={status}
+          onStatusChange={(s) => { setStatus(s); setPage(1); }}
+        />
       </div>
 
+      {/* Loading State */}
       {isLoading && (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '40px',
+          color: '#888',
+          fontSize: '16px'
+        }}>
           Loading tasks...
         </div>
       )}
 
+      {/* Error State */}
       {isError && (
-        <div style={{ background: '#fee', color: '#e74c3c', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
-          Error loading tasks: {(error as any)?.message || 'Something went wrong'}
+        <div style={{
+          background: '#fee',
+          color: '#e74c3c',
+          padding: '16px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontSize: '14px'
+        }}>
+          Error: {(error as any)?.message || 'Something went wrong'}
         </div>
       )}
 
-      {!isLoading && !isError && data?.tasks?.length === 0 && (
+      {/* Empty State */}
+      {!isLoading && !isError && tasks.length === 0 && (
         <div style={{
-          textAlign: 'center', padding: '60px', color: '#888',
-          background: '#fff', borderRadius: '12px', border: '2px dashed #ddd',
+          textAlign: 'center',
+          padding: '60px',
+          color: '#888',
+          background: '#fff',
+          borderRadius: '12px',
+          border: '2px dashed #ddd',
         }}>
-          <p style={{ fontSize: '18px', marginBottom: '8px' }}>No tasks found</p>
+          <p style={{ fontSize: '18px', marginBottom: '8px' }}>
+            No tasks found
+          </p>
           <p style={{ fontSize: '14px' }}>
-            {search || status ? 'Try changing your filters' : 'Create your first task!'}
+            {search || status
+              ? 'Try changing your filters'
+              : 'Create your first task!'}
           </p>
         </div>
       )}
 
-      {data?.tasks?.map((task) => (
+      {/* Task List */}
+      {tasks.map((task: Task) => (
         <TaskCard
           key={task.id}
           task={task}
@@ -204,12 +253,26 @@ const TasksPage = () => {
         />
       ))}
 
+      {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '24px' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '8px',
+          marginTop: '24px',
+          alignItems: 'center'
+        }}>
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page === 1 ? '#f5f5f5' : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer' }}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              background: page === 1 ? '#f5f5f5' : '#fff',
+              cursor: page === 1 ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+            }}
           >
             Previous
           </button>
@@ -219,18 +282,27 @@ const TasksPage = () => {
           <button
             onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
             disabled={page === pagination.totalPages}
-            style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page === pagination.totalPages ? '#f5f5f5' : '#fff', cursor: page === pagination.totalPages ? 'not-allowed' : 'pointer' }}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              background: page === pagination.totalPages ? '#f5f5f5' : '#fff',
+              cursor: page === pagination.totalPages ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+            }}
           >
             Next
           </button>
         </div>
       )}
 
+      {/* Task Form Modal */}
       {showForm && (
         <TaskForm
           task={editingTask}
           projectId={defaultProjectId}
           users={usersData?.users || []}
+          projects={projectsData?.projects || []}
           onSubmit={handleSubmit}
           onCancel={() => { setShowForm(false); setEditingTask(null); }}
           loading={createMutation.isPending || updateMutation.isPending}
