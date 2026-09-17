@@ -9,20 +9,30 @@ const taskSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['todo', 'in_progress', 'done']),
   priority: z.enum(['low', 'medium', 'high']).optional(),
-  projectId: z.number({ error: 'Project is required' }),
+  projectId: z.number(),
+  assignedTo: z.number().optional(),
 });
 
 type TaskFormData = z.infer<typeof taskSchema>;
 
+interface User {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+}
+
 interface TaskFormProps {
   task?: Task | null;
   projectId: number;
+  users: User[];
   onSubmit: (data: TaskFormData) => void;
   onCancel: () => void;
   loading?: boolean;
 }
 
-const TaskForm = ({ task, projectId, onSubmit, onCancel, loading }: TaskFormProps) => {
+const TaskForm = ({ task, projectId, users, onSubmit, onCancel, loading }: TaskFormProps) => {
   const { register, handleSubmit, reset, formState: { errors } } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
     defaultValues: {
@@ -31,6 +41,7 @@ const TaskForm = ({ task, projectId, onSubmit, onCancel, loading }: TaskFormProp
       status: (task?.status as any) || 'todo',
       priority: (task?.priority as any) || 'medium',
       projectId: task?.project_id || projectId,
+      assignedTo: task?.assigned_to || undefined,
     },
   });
 
@@ -41,6 +52,7 @@ const TaskForm = ({ task, projectId, onSubmit, onCancel, loading }: TaskFormProp
       status: (task?.status as any) || 'todo',
       priority: (task?.priority as any) || 'medium',
       projectId: task?.project_id || projectId,
+      assignedTo: task?.assigned_to || undefined,
     });
   }, [task]);
 
@@ -93,7 +105,7 @@ const TaskForm = ({ task, projectId, onSubmit, onCancel, loading }: TaskFormProp
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
               <label style={{ fontSize: '14px', fontWeight: 500 }}>Status</label>
               <select {...register('status')} style={inputStyle}>
@@ -110,6 +122,23 @@ const TaskForm = ({ task, projectId, onSubmit, onCancel, loading }: TaskFormProp
                 <option value="high">High</option>
               </select>
             </div>
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 500 }}>Assign To</label>
+            <select
+              {...register('assignedTo', {
+                setValueAs: (v) => v === '' ? undefined : parseInt(v)
+              })}
+              style={inputStyle}
+            >
+              <option value="">Unassigned</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.first_name} {user.last_name} ({user.email}) — {user.role}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../components/layout/Layout';
 import TaskCard from '../components/tasks/TaskCard';
 import TaskForm from '../components/tasks/TaskForm';
@@ -9,6 +9,7 @@ import { getTasks, createTask, updateTask, deleteTask } from '../api/tasks.api';
 import { getProjects } from '../api/projects.api';
 import type { Task, TaskFilters as ITaskFilters } from '../types';
 import useDebounce from '../hooks/useDebounce';
+import api from '../api/axios';
 
 const TasksPage = () => {
   const queryClient = useQueryClient();
@@ -27,29 +28,32 @@ const TasksPage = () => {
     limit: 10,
   };
 
-  // Fetch tasks
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['tasks', filters],
     queryFn: () => getTasks(filters),
-    placeholderData: keepPreviousData,
+    keepPreviousData: true,
   });
 
-  // Fetch projects for form
   const { data: projectsData } = useQuery({
     queryKey: ['projects'],
     queryFn: getProjects,
   });
 
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await api.get('/users');
+      return res.data;
+    },
+  });
+
   const defaultProjectId = projectsData?.projects[0]?.id || 0;
 
-  // Create task mutation
   const createMutation = useMutation({
     mutationFn: createTask,
     onMutate: async (newTask) => {
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const previous = queryClient.getQueryData(['tasks', filters]);
-
       queryClient.setQueryData(['tasks', filters], (old: any) => ({
         ...old,
         tasks: [
@@ -64,11 +68,9 @@ const TasksPage = () => {
           ...(old?.tasks || []),
         ],
       }));
-
       return { previous };
     },
-    onError: (_err, _variables, context) => {
-      // Roll back on error
+    onError: (err, variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
@@ -77,50 +79,39 @@ const TasksPage = () => {
     },
   });
 
-  // Update task mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateTask(id, data),
     onMutate: async ({ id, data }) => {
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const previous = queryClient.getQueryData(['tasks', filters]);
-
       queryClient.setQueryData(['tasks', filters], (old: any) => ({
         ...old,
-        tasks: old?.tasks?.map((t: Task) =>
-          t.id === id ? { ...t, ...data } : t
-        ),
+        tasks: old?.tasks?.map((t: Task) => t.id === id ? { ...t, ...data } : t),
       }));
-
       return { previous };
     },
-    onError: (_err, _variables, context) => {
-      // Roll back on error
+    onError: (err, variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setEditingTask(null);
+      setShowForm(false);
     },
   });
 
-  // Delete task mutation
   const deleteMutation = useMutation({
     mutationFn: deleteTask,
     onMutate: async (id) => {
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       const previous = queryClient.getQueryData(['tasks', filters]);
-
       queryClient.setQueryData(['tasks', filters], (old: any) => ({
         ...old,
         tasks: old?.tasks?.filter((t: Task) => t.id !== id),
       }));
-
       return { previous };
     },
-    onError: (_err, _variables, context) => {
-      // Roll back on error
+    onError: (err, variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
     },
     onSettled: () => {
@@ -137,6 +128,7 @@ const TasksPage = () => {
           description: formData.description,
           status: formData.status,
           priority: formData.priority,
+          assignedTo: formData.assignedTo,
         },
       });
     } else {
@@ -146,6 +138,7 @@ const TasksPage = () => {
         status: formData.status,
         priority: formData.priority,
         projectId: formData.projectId || defaultProjectId,
+        assignedTo: formData.assignedTo,
       });
     }
   };
@@ -173,41 +166,27 @@ const TasksPage = () => {
         </button>
       </div>
 
-      {/* Search and Filters */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchInput onSearch={setSearch} />
         <TaskFilters status={status} onStatusChange={(s) => { setStatus(s); setPage(1); }} />
       </div>
 
-      {/* Loading State */}
       {isLoading && (
         <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
           Loading tasks...
         </div>
       )}
 
-      {/* Error State */}
       {isError && (
-        <div style={{
-          background: '#fee',
-          color: '#e74c3c',
-          padding: '16px',
-          borderRadius: '8px',
-          marginBottom: '16px',
-        }}>
+        <div style={{ background: '#fee', color: '#e74c3c', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
           Error loading tasks: {(error as any)?.message || 'Something went wrong'}
         </div>
       )}
 
-      {/* Empty State */}
       {!isLoading && !isError && data?.tasks?.length === 0 && (
         <div style={{
-          textAlign: 'center',
-          padding: '60px',
-          color: '#888',
-          background: '#fff',
-          borderRadius: '12px',
-          border: '2px dashed #ddd',
+          textAlign: 'center', padding: '60px', color: '#888',
+          background: '#fff', borderRadius: '12px', border: '2px dashed #ddd',
         }}>
           <p style={{ fontSize: '18px', marginBottom: '8px' }}>No tasks found</p>
           <p style={{ fontSize: '14px' }}>
@@ -216,7 +195,6 @@ const TasksPage = () => {
         </div>
       )}
 
-      {/* Task List */}
       {data?.tasks?.map((task) => (
         <TaskCard
           key={task.id}
@@ -226,19 +204,12 @@ const TasksPage = () => {
         />
       ))}
 
-      {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '24px' }}>
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '6px',
-              background: page === 1 ? '#f5f5f5' : '#fff',
-              cursor: page === 1 ? 'not-allowed' : 'pointer',
-            }}
+            style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page === 1 ? '#f5f5f5' : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer' }}
           >
             Previous
           </button>
@@ -248,24 +219,18 @@ const TasksPage = () => {
           <button
             onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
             disabled={page === pagination.totalPages}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '6px',
-              background: page === pagination.totalPages ? '#f5f5f5' : '#fff',
-              cursor: page === pagination.totalPages ? 'not-allowed' : 'pointer',
-            }}
+            style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page === pagination.totalPages ? '#f5f5f5' : '#fff', cursor: page === pagination.totalPages ? 'not-allowed' : 'pointer' }}
           >
             Next
           </button>
         </div>
       )}
 
-      {/* Task Form Modal */}
       {showForm && (
         <TaskForm
           task={editingTask}
           projectId={defaultProjectId}
+          users={usersData?.users || []}
           onSubmit={handleSubmit}
           onCancel={() => { setShowForm(false); setEditingTask(null); }}
           loading={createMutation.isPending || updateMutation.isPending}

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { User } from '../types';
 
 interface AuthState {
@@ -11,24 +12,36 @@ interface AuthState {
   isAuthenticated: () => boolean;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
-  tenantName: null,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      accessToken: null,
+      tenantName: null,
 
-  setAuth: (user, accessToken, tenantName) => {
-    set({ user, accessToken, tenantName: tenantName || null });
-  },
+      setAuth: (user, accessToken, tenantName) => {
+        set({ user, accessToken, tenantName: tenantName || null });
+      },
 
-  setAccessToken: (token) => {
-    set({ accessToken: token });
-  },
+      setAccessToken: (token) => {
+        set({ accessToken: token });
+      },
 
-  clearAuth: () => {
-    set({ user: null, accessToken: null, tenantName: null });
-  },
+      clearAuth: () => {
+        set({ user: null, accessToken: null, tenantName: null });
+      },
 
-  isAuthenticated: () => {
-    return !!get().accessToken && !!get().user;
-  },
-}));
+      isAuthenticated: () => {
+        return !!get().accessToken && !!get().user;
+      },
+    }),
+    {
+      name: 'taskhub-auth',
+      partialize: (state) => ({
+        user: state.user,
+        accessToken: state.accessToken,
+        tenantName: state.tenantName,
+      }),
+    }
+  )
+);
