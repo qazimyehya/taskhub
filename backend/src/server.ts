@@ -2,12 +2,27 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import pool from './db';
 import authRoutes from './routes/auth';
+import projectRoutes from './routes/projects';
+import taskRoutes from './routes/tasks';
 
 dotenv.config();
 
 const app = express();
+
+// Rate limiter for auth endpoints only
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                   // Max 10 requests per 15 mins
+  message: {
+    error: 'Too many requests',
+    message: 'Too many login attempts. Please try again after 15 minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Middleware
 app.use(cors({
@@ -18,7 +33,9 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Routes
-app.use('/auth', authRoutes);
+app.use('/auth', authLimiter, authRoutes); // Rate limited!
+app.use('/projects', projectRoutes);
+app.use('/tasks', taskRoutes);
 
 // Test routes
 app.get('/', (req, res) => {
@@ -45,11 +62,3 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✓ Server running on http://localhost:${PORT}`);
 });
-import projectRoutes from './routes/projects';
-
-// Add after auth routes
-app.use('/projects', projectRoutes);
-import taskRoutes from './routes/tasks';
-
-// Add after projects routes
-app.use('/tasks', taskRoutes);
