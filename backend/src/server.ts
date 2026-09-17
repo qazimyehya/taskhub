@@ -45,3 +45,11 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✓ Server running on http://localhost:${PORT}`);
 });
+import projectRoutes from './routes/projects';
+
+// Add after auth routes
+app.use('/projects', projectRoutes);
+import taskRoutes from './routes/tasks';
+
+// Add after projects routes
+app.use('/tasks', taskRoutes);
