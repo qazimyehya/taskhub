@@ -618,3 +618,129 @@ Tested It Works
 Committed to Git
 1 new commit: feat: create database schema and connect backend to PostgreSQL
 Total commits: 4
+
+Part 2: Complete Summary 🎯
+What We Built
+
+Authentication System:
+
+POST /auth/signup — Creates tenant + user, returns JWT + refresh token
+POST /auth/login — Validates credentials, returns JWT + refresh token
+POST /auth/refresh — Gets new access token using refresh token
+POST /auth/logout — Clears refresh token cookie
+
+Projects API:
+
+GET /projects — List all tenant's projects
+GET /projects/:id — Get single project
+POST /projects — Create project
+PATCH /projects/:id — Update project
+DELETE /projects/:id — Soft delete (admin only!)
+
+Tasks API:
+
+GET /tasks — List tasks with filtering, search, pagination
+GET /tasks/:id — Get single task
+POST /tasks — Create task
+PATCH /tasks/:id — Update task
+DELETE /tasks/:id — Soft delete
+Security Features
+✅ JWT access token (15 min expiry)
+✅ Refresh token in httpOnly cookie (7 days)
+✅ bcrypt password hashing (12 rounds)
+✅ tenant_id extracted from JWT (never from request body!)
+✅ Rate limiting: 10 requests per 15 mins on auth
+✅ Role-based access: only admin can delete projects
+✅ Soft deletes (deleted_at) - no hard deletes
+✅ No stack traces in production
+Files Created
+backend/src/
+├── server.ts              ✅ Updated (routes + rate limiting)
+├── db.ts                  ✅ Database connection
+├── routes/
+│   ├── auth.ts            ✅ signup, login, refresh, logout
+│   ├── projects.ts        ✅ full CRUD
+│   └── tasks.ts           ✅ full CRUD + search + filter
+├── middleware/
+│   ├── authenticate.ts    ✅ JWT validation
+│   └── authorize.ts       ✅ Role-based access
+├── validators/
+│   ├── auth.validator.ts  ✅ Zod schemas
+│   ├── project.validator.ts ✅ Zod schemas
+│   └── task.validator.ts  ✅ Zod schemas
+├── types/
+│   └── index.ts           ✅ TypeScript types
+└── tests/
+    └── auth.test.ts       ✅ 14 passing tests
+API Endpoints Summary
+Method	Endpoint	Auth	Role	What it does
+POST	/auth/signup	❌	Any	Create account
+POST	/auth/login	❌	Any	Login
+POST	/auth/refresh	❌	Any	Refresh token
+POST	/auth/logout	❌	Any	Logout
+GET	/projects	✅	Any	List projects
+POST	/projects	✅	Any	Create project
+PATCH	/projects/:id	✅	Any	Update project
+DELETE	/projects/:id	✅	Admin	Delete project
+GET	/tasks	✅	Any	List + filter tasks
+POST	/tasks	✅	Any	Create task
+PATCH	/tasks/:id	✅	Any	Update task
+DELETE	/tasks/:id	✅	Any	Delete task
+Tests: 14 Passing ✅
+Authentication (8 tests):
+✅ Signup Tenant A
+✅ Signup Tenant B
+✅ Reject duplicate slug
+✅ Login successfully
+✅ Reject wrong password
+✅ Reject wrong tenant
+✅ Reject missing token
+✅ Reject invalid token
+
+Tenant Isolation (6 tests):
+✅ Tenant A creates project
+✅ Tenant B creates project
+✅ Tenant B CANNOT see Tenant A projects
+✅ Tenant A CANNOT see Tenant B projects
+✅ Tenant B CANNOT access Tenant A by ID
+✅ Tenant B CANNOT delete Tenant A project
+Commits Made in Part 2
+31ea559 feat: add automated tests - 14 passing
+b6ac4cc feat: add rate limiting on auth endpoints
+d4832f6 feat: add Projects and Tasks CRUD
+7696005 feat: add authentication endpoints
+b220308 chore: setup folder structure
+What Part 2 Achieved from Assignment
+Requirement	Status
+JWT access + refresh tokens	✅
+httpOnly cookie for refresh	✅
+JWT payload: userId, tenantId, role	✅
+Every route scoped to tenantId from token	✅
+bcrypt password hashing	✅
+Role-based access control	✅
+Token refresh + logout	✅
+CRUD for Projects + Tasks	✅
+GET /tasks with filtering	✅
+GET /tasks with pagination	✅
+GET /tasks with search	✅
+Zod validation on write endpoints	✅
+Meaningful 4xx errors	✅
+No unhandled promise rejections	✅
+Rate limiting on auth	✅
+.env.example (no secrets)	✅
+Automated tests (tenant isolation + auth)	✅
+Progress Overview
+Part 1: Database Design    ✅ COMPLETE
+Part 2: Backend API        ✅ COMPLETE
+Part 3: Frontend           🔄 NEXT
+
+You've completed 2 out of 3 parts! 🚀
+
+Part 3 (Frontend) needs:
+
+React app setup
+Login/Signup pages
+Task list with debounced search
+Filters and pagination
+Create/edit task form with optimistic updates
+Tenant awareness
