@@ -1,15 +1,34 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import pool from './db';
+import authRoutes from './routes/auth';
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// Test database connection
+// Middleware
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+}));
+app.use(express.json());
+app.use(cookieParser());
+
+// Routes
+app.use('/auth', authRoutes);
+
+// Test routes
+app.get('/', (req, res) => {
+  res.json({ message: 'TaskHub Backend is running!' });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.get('/db-test', async (req, res) => {
   try {
     const result = await pool.query('SELECT COUNT(*) FROM tenants');
@@ -20,14 +39,6 @@ app.get('/db-test', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Database error' });
   }
-});
-
-app.get('/', (req, res) => {
-  res.json({ message: 'TaskHub Backend is running!' });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
 const PORT = process.env.PORT || 3001;
