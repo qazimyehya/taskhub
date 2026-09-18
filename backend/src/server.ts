@@ -15,7 +15,7 @@ const app = express();
 // Rate limiter for auth endpoints only
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                   // Max 10 requests per 15 mins
+  max: 100,                   // Max 100 requests per 15 mins
   message: {
     error: 'Too many requests',
     message: 'Too many login attempts. Please try again after 15 minutes.'
@@ -26,7 +26,12 @@ const authLimiter = rateLimit({
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  origin: [
+    'http://localhost',
+    'http://localhost:80',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ],
   credentials: true,
 }));
 app.use(express.json());
