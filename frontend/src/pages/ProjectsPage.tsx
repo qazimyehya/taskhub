@@ -132,10 +132,10 @@ const ProjectsPage = () => {
 
   return (
     <Layout>
-      <div style={{ display: 'flex', gap: '24px' }}>
+      <div className="split-layout" style={{ display: 'flex', gap: '24px' }}>
 
         {/* LEFT: Projects List */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ margin: 0 }}>Projects</h2>
             {user?.role === 'admin' && (
@@ -216,6 +216,7 @@ const ProjectsPage = () => {
             projectsData?.projects?.map((project: any) => (
               <div
                 key={project.id}
+                className="project-card"
                 onClick={() => setSelectedProject(project)}
                 style={{
                   background: selectedProject?.id === project.id ? '#ebf5fb' : '#fff',
@@ -227,20 +228,22 @@ const ProjectsPage = () => {
                   boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <h3 style={{ margin: '0 0 4px', fontSize: '15px' }}>{project.name}</h3>
                     {project.description && (
                       <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#666' }}>{project.description}</p>
                     )}
                     <span style={{ fontSize: '12px', color: '#888' }}>
-                      {project.member_count} member{project.member_count !== '1' ? 's' : ''}
+                      {project.member_count} member{Number(project.member_count) !== 1 ? 's' : ''}
                     </span>
                   </div>
                   {user?.role === 'admin' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(project.id); }}
                       style={{
+                        flex: 'none',
+                        whiteSpace: 'nowrap',
                         padding: '6px 12px',
                         background: '#e74c3c',
                         color: '#fff',
@@ -261,7 +264,7 @@ const ProjectsPage = () => {
 
         {/* RIGHT: Project Detail */}
         {selectedProject && (
-          <div style={{ width: '380px' }}>
+          <div className="split-detail" style={{ width: '380px', minWidth: 0 }}>
             <div style={{
               background: '#fff',
               borderRadius: '12px',

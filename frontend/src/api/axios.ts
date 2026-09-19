@@ -40,8 +40,13 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // A 401 from /auth/* (wrong password, unknown account, missing refresh cookie)
+    // is a real answer for the caller, not an expired access token — don't try to
+    // refresh, and don't bounce the user to /login with a confusing error.
+    const isAuthRequest = originalRequest?.url?.startsWith('/auth/');
+
     // If 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRequest) {
       if (isRefreshing) {
         // Queue the request while refreshing
         return new Promise((resolve, reject) => {

@@ -28,21 +28,32 @@ const LoginPage = () => {
       setError('');
       await login(data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+      const status = err.response?.status;
+      if (status === 401) {
+        // The API deliberately doesn't say whether the email or the password was
+        // wrong (that would let anyone probe which accounts exist).
+        setError(
+          "We couldn't find an account matching those details. Check your email, password and organization slug, or create a new account below."
+        );
+      } else if (!err.response) {
+        setError('Cannot reach the server. Please try again.');
+      } else {
+        setError(err.response?.data?.message || 'Login failed');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{
+    <div className="auth-page" style={{
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: '#f5f5f5'
     }}>
-      <div style={{
+      <div className="auth-card" style={{
         background: '#fff',
         padding: '40px',
         borderRadius: '12px',

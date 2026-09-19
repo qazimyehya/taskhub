@@ -42,7 +42,7 @@ const TaskCard = ({ task, onEdit, onDelete }: TaskCardProps) => {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done';
 
   return (
-    <div style={{
+    <div className="task-card" style={{
       background: '#fff',
       border: '1px solid #eee',
       borderRadius: '10px',
@@ -51,10 +51,10 @@ const TaskCard = ({ task, onEdit, onDelete }: TaskCardProps) => {
       boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       borderLeft: `4px solid ${statusColors[task.status] || '#ddd'}`,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="task-card__row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
 
         {/* Left: Task Info */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
           {/* Title */}
           <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: 600 }}>
@@ -135,7 +135,7 @@ const TaskCard = ({ task, onEdit, onDelete }: TaskCardProps) => {
           </div>
 
           {/* Meta Info */}
-          <div style={{
+          <div className="task-card__meta" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
             gap: '6px',
@@ -187,7 +187,7 @@ const TaskCard = ({ task, onEdit, onDelete }: TaskCardProps) => {
         </div>
 
         {/* Right: Buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginLeft: '16px' }}>
+        <div className="task-card__actions" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginLeft: '16px' }}>
           <button
             onClick={() => onEdit(task)}
             style={{

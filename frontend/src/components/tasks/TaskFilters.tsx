@@ -5,7 +5,7 @@ interface TaskFiltersProps {
 
 const TaskFilters = ({ status, onStatusChange }: TaskFiltersProps) => {
   return (
-    <div style={{ display: 'flex', gap: '8px' }}>
+    <div className="status-filters" style={{ display: 'flex', gap: '8px' }}>
       {['all', 'todo', 'in_progress', 'done'].map((s) => (
         <button
           key={s}

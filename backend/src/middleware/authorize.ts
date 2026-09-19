@@ -1,23 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { Role } from '../types';
+import { forbidden, unauthorized } from '../errors';
 
 // Role-based access control middleware
 const authorize = (...roles: Role[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    // Check if user is authenticated
+  return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ 
-        error: 'Unauthorized',
-        message: 'Not authenticated' 
-      });
+      return next(unauthorized('Not authenticated'));
     }
 
-    // Check if user has required role
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        error: 'Forbidden',
-        message: 'You do not have permission to perform this action' 
-      });
+      return next(forbidden());
     }
 
     next();

@@ -10,7 +10,7 @@ const taskSchema = z.object({
   status: z.enum(['todo', 'in_progress', 'done']),
   priority: z.enum(['low', 'medium', 'high']).optional(),
   projectId: z.number(),
-  assignedTo: z.number().optional(),
+  assignedTo: z.number().nullable().optional(),
   dueDate: z.string().optional(),
 });
 
@@ -84,7 +84,7 @@ const TaskForm = ({ task, projectId, users, projects, onSubmit, onCancel, loadin
   };
 
   return (
-    <div style={{
+    <div className="modal-overlay" style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.5)',
@@ -93,7 +93,7 @@ const TaskForm = ({ task, projectId, users, projects, onSubmit, onCancel, loadin
       justifyContent: 'center',
       zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-card" style={{
         background: '#fff',
         padding: '32px',
         borderRadius: '12px',
@@ -159,7 +159,7 @@ const TaskForm = ({ task, projectId, users, projects, onSubmit, onCancel, loadin
           </div>
 
           {/* Status + Priority */}
-          <div style={{
+          <div className="form-grid-2" style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '12px',
@@ -198,7 +198,7 @@ const TaskForm = ({ task, projectId, users, projects, onSubmit, onCancel, loadin
             <label style={labelStyle}>Assign To</label>
             <select
               {...register('assignedTo', {
-                setValueAs: (v) => v === '' ? undefined : parseInt(v)
+                setValueAs: (v) => (v === '' || v == null ? null : parseInt(v))
               })}
               style={inputStyle}
             >

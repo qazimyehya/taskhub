@@ -5,9 +5,12 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/server.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
-    "test": "jest --forceExit"
+    "test": "jest --runInBand --forceExit",
+    "db:migrate": "prisma migrate deploy && node scripts/setup-app-role.js",
+    "test:db:setup": "node scripts/setup-test-db.js",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

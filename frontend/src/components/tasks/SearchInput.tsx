@@ -16,6 +16,7 @@ const SearchInput = ({ onSearch, placeholder = 'Search tasks...' }: SearchInputP
 
   return (
     <input
+      className="search-input"
       type="text"
       value={value}
       onChange={(e) => setValue(e.target.value)}

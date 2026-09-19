@@ -131,7 +131,7 @@ const TeamPage = () => {
           )}
 
           <form onSubmit={handleSubmit((data) => inviteMutation.mutate(data))}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 500 }}>First Name</label>
                 <input {...register('firstName')} placeholder="John" style={inputStyle} />
@@ -192,6 +192,7 @@ const TeamPage = () => {
           {data?.users?.map((member: any, index: number) => (
             <div
               key={member.id}
+              className="team-row"
               style={{
                 padding: '16px 20px',
                 display: 'flex',
@@ -210,7 +211,7 @@ const TeamPage = () => {
                 <div style={{ color: '#666', fontSize: '13px' }}>{member.email}</div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="team-row__actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{
                   background: roleColors[member.role] + '22',
                   color: roleColors[member.role],

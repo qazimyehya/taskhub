@@ -56,14 +56,14 @@ const SignupPage = () => {
   };
 
   return (
-    <div style={{
+    <div className="auth-page" style={{
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: '#f5f5f5'
     }}>
-      <div style={{
+      <div className="auth-card" style={{
         background: '#fff',
         padding: '40px',
         borderRadius: '12px',
@@ -89,7 +89,7 @@ const SignupPage = () => {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
               <label style={labelStyle}>First Name</label>
               <input {...register('firstName')} placeholder="Alice" style={inputStyle} />

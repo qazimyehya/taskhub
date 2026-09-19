@@ -12,6 +12,11 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# API base URL baked into the bundle. "/api" goes through nginx (same origin,
+# no CORS, real client IPs reach the rate limiter).
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+
 # Build for production
 RUN npm run build
 

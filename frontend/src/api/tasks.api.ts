@@ -20,8 +20,8 @@ export const createTask = async (data: {
   status: string;
   priority?: string;
   projectId: number;
-  assignedTo?: number;
-  dueDate?: string;
+  assignedTo?: number | null;
+  dueDate?: string | null;
 }): Promise<{ task: Task }> => {
   const response = await api.post('/tasks', data);
   return response.data;
@@ -31,11 +31,11 @@ export const updateTask = async (
   id: number,
   data: Partial<{
     title: string;
-    description: string;
+    description: string | null;
     status: string;
-    priority: string;
-    assignedTo: number;
-    dueDate: string;
+    priority: string | null;
+    assignedTo: number | null;
+    dueDate: string | null;
   }>
 ): Promise<{ task: Task }> => {
   const response = await api.patch(`/tasks/${id}`, data);

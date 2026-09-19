@@ -146,33 +146,23 @@ CREATE TABLE tasks (
 
 ### Indexes Created
 
-```sql
-CREATE INDEX idx_users_tenant_id ON users(tenant_id);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_projects_tenant_id ON projects(tenant_id);
-CREATE INDEX idx_tasks_tenant_id ON tasks(tenant_id);
-CREATE INDEX idx_tasks_project_id ON tasks(project_id);
-CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to);
-```
+Declared in `backend/prisma/schema.prisma` (so Prisma migrations never drop them) and created by the
+`tenant_integrity_indexes_refresh_tokens` migration:
 
-### Why Each Index?
+| Index | Columns | Why |
+|-------|---------|-----|
+| `users_tenant_id_idx`, `users_email_idx` | `tenant_id` / `email` | user lookups by tenant / email |
+| `projects_tenant_id_idx` | `tenant_id` | project lists |
+| `project_members_tenant_id_idx`, `project_members_user_id_idx` | | membership lookups |
+| `tasks_tenant_id_idx`, `tasks_project_id_idx`, `tasks_assigned_to_idx` | single column | FK lookups / "my tasks" |
+| `tasks_tenant_id_project_id_idx` | `(tenant_id, project_id)` | tasks of a project inside a tenant |
+| `tasks_tenant_id_status_idx` | `(tenant_id, status)` | status filter |
+| `tasks_tenant_id_created_at_idx` | `(tenant_id, created_at DESC)` | default list ordering + pagination |
+| `idx_tasks_title_trgm`, `idx_tasks_description_trgm` | GIN `gin_trgm_ops` (`pg_trgm`) | `ILIKE '%term%'` search without a seq scan |
 
-| Index | Columns | Query Pattern | Why Needed |
-|-------|---------|---------------|-----------|
-| `idx_users_tenant_id` | `tenant_id` | Login queries filtered by tenant | **CRITICAL** — every user lookup |
-| `idx_users_email` | `email` | Find user by email (cross-tenant) | Needed for login flow |
-| `idx_projects_tenant_id` | `tenant_id` | List projects for a tenant | **CRITICAL** — frequently accessed |
-| `idx_tasks_tenant_id` | `tenant_id` | Verify task belongs to tenant | **CRITICAL** — data isolation check |
-| `idx_tasks_project_id` | `project_id` | List tasks in a project | **CRITICAL** — main UI query |
-| `idx_tasks_assigned_to` | `assigned_to` | Find tasks assigned to user | For "my tasks" view |
+Also created: `UNIQUE (tenant_id, id)` on `users` and `projects`, the targets of the composite foreign keys in section 5.
 
-### Composite Index Consideration
-
-**Not created yet, but could add:**
-```sql
-CREATE INDEX idx_tasks_tenant_project ON tasks(tenant_id, project_id);
-```
-**Use case:** When listing tasks for a specific project in a specific tenant (join optimization)
+---
 
 ---
 
@@ -205,25 +195,43 @@ const userTenantId = req.user.tenantId; // From JWT
 const userTenantId = req.body.tenant_id; // User could spoof!
 ```
 
-#### 3. Row-Level Security Policies (OPTIONAL, Not Yet Implemented)
-PostgreSQL RLS would enforce at database level:
+#### 3. Row-Level Security (ENFORCED)
+Every tenant table has `ENABLE` + `FORCE ROW LEVEL SECURITY` with a policy of the form:
 
 ```sql
--- Proposed (not yet implemented)
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY task_isolation ON tasks
-  USING (tenant_id = current_setting('app.current_tenant_id')::int);
+CREATE POLICY tasks_tenant_isolation ON tasks
+  USING      (tenant_id = app_current_tenant())
+  WITH CHECK (tenant_id = app_current_tenant());
 ```
 
-#### 4. Foreign Key Constraints (ENFORCED)
-Database ensures referential integrity:
+`app_current_tenant()` reads `app.tenant_id` (NULL when unset, so "no tenant" means "no rows").
+For the policies to bind, three things must all be true — each is guarded:
+
+1. **The API connects as `taskhub_app`**, a role that owns nothing and cannot bypass RLS. (Superusers and
+   table owners bypass RLS, which is what the original setup did wrong.) `server.ts` refuses to start if
+   the connected role is a superuser or has `BYPASSRLS`.
+2. **The tenant is set per transaction**: `withTenant()` in `src/db.ts` runs
+   `BEGIN; SELECT set_config('app.tenant_id', $1, true); …; COMMIT`. `is_local = true` means it can never
+   leak to the next request that reuses the pooled connection.
+3. **Pre-login lookups use two `SECURITY DEFINER` functions** (`app_find_tenant_id`, `app_create_tenant`)
+   instead of a wide-open policy on `tenants`.
+
+`backend/src/tests/rls.test.ts` queries Postgres *as the API role with no `WHERE tenant_id`* and asserts
+it only sees its own rows, can't write another tenant's, and can't create tenants directly.
+
+#### 4. Tenant-scoped Foreign Keys (ENFORCED)
+Plain FKs only prove the referenced row *exists*, not that it's in the same tenant. So every reference to a
+tenant-owned row is composite:
 
 ```sql
--- If a task references a project, that project must exist
--- If that project is in tenant A, task must also be in tenant A
--- (enforced by FK relationship)
+tasks (tenant_id, project_id)  → projects (tenant_id, id)
+tasks (tenant_id, assigned_to) → users    (tenant_id, id)
+tasks (tenant_id, created_by)  → users    (tenant_id, id)
+project_members (tenant_id, project_id | user_id), projects (tenant_id, created_by), refresh_tokens (tenant_id, user_id)
 ```
+
+A task in tenant A can therefore never point at a project or user of tenant B, even if application code
+forgets to check (nullable columns use `MATCH SIMPLE`, so unassigned tasks are unaffected).
 
 ---
 
@@ -313,9 +321,9 @@ CREATE INDEX idx_tasks_archived ON tasks(archived) WHERE deleted_at IS NULL;
 
 | Layer | Status | How It Works |
 |-------|--------|------------|
-| **Database** | ✅ Partial | Foreign keys enforce referential integrity |
-| **Application** | ✅ Complete | Every query filters by tenant_id from JWT |
-| **RLS Policies** | ❌ Not Yet | Can add later for belt-and-suspenders |
+| **Database** | ✅ Complete | Composite tenant-scoped FKs + RLS (as a non-bypass role) |
+| **Application** | ✅ Complete | Every query filters by tenant_id from JWT and runs inside `withTenant()` |
+| **RLS Policies** | ✅ Enforced | `taskhub_app` role, per-transaction `app.tenant_id`, startup guard, tested |
 | **Soft Deletes** | ✅ Complete | Audit trail preserved, no hard deletes |
 | **JWT Tokens** | ✅ Complete | tenant_id extracted from token, not request |
 
@@ -327,9 +335,8 @@ This design balances **simplicity** (shared schema) with **security** (tenant_id
 
 1. Code review practices
 2. Unit tests that verify isolation
-3. Optional RLS policies (database-level safety net)
+3. RLS policies + tenant-scoped foreign keys (database-level safety net, covered by `rls.test.ts`)
 
 ---
 
-**Last Updated:** September 17, 2026
-**Status:** Phase 2 Complete ✅
+**Last Updated:** September 19, 2026

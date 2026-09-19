@@ -16,7 +16,7 @@ const Header = () => {
   });
 
   return (
-    <header style={{
+    <header className="app-header" style={{
       background: '#1a1a2e',
       padding: '16px 24px',
       display: 'flex',
@@ -25,8 +25,8 @@ const Header = () => {
       borderBottom: '1px solid #333',
     }}>
       {/* Left: Logo + Nav */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-        <div>
+      <div className="app-header__left" style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+        <div className="app-header__brand">
           <h1 style={{ color: '#fff', margin: 0, fontSize: '20px' }}>
             TaskHub
           </h1>
@@ -38,7 +38,7 @@ const Header = () => {
         </div>
 
         {user && (
-          <nav style={{ display: 'flex', gap: '4px' }}>
+          <nav className="app-header__nav" style={{ display: 'flex', gap: '4px' }}>
             <Link to="/tasks" style={navLinkStyle('/tasks')}>
               Tasks
             </Link>
@@ -54,9 +54,9 @@ const Header = () => {
 
       {/* Right: User info + Logout */}
       {user && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="app-header__user" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#fff', fontSize: '13px' }}>
+            <div className="app-header__email" style={{ color: '#fff', fontSize: '13px' }}>
               {user.email}
             </div>
             <div style={{

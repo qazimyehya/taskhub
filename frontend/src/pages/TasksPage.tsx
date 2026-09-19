@@ -119,8 +119,9 @@ const TasksPage = () => {
       }));
       return { previous };
     },
-    onError: (_err, _variables, context) => {
+    onError: (err: any, _variables, context) => {
       queryClient.setQueryData(['tasks', filters], context?.previous);
+      window.alert(err?.response?.data?.message ?? 'Could not delete the task');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -182,7 +183,7 @@ const TasksPage = () => {
       </div>
 
       {/* Search and Filters */}
-      <div style={{
+      <div className="filters-row" style={{
         display: 'flex',
         gap: '16px',
         marginBottom: '24px',
@@ -255,7 +256,7 @@ const TasksPage = () => {
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div style={{
+        <div className="pagination" style={{
           display: 'flex',
           justifyContent: 'center',
           gap: '8px',

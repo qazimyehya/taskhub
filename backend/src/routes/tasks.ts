@@ -1,280 +1,248 @@
 import { Router, Request, Response } from 'express';
-import pool from '../db';
+import { Db, withTenant } from '../db';
 import authenticate from '../middleware/authenticate';
-import { createTaskSchema, updateTaskSchema } from '../validators/task.validator';
+import { asyncHandler, badRequest, forbidden, notFound, parse } from '../errors';
+import { idParams } from '../validators/common';
+import {
+  createTaskSchema,
+  listTasksQuerySchema,
+  updateTaskSchema,
+} from '../validators/task.validator';
 
 const router = Router();
 
 router.use(authenticate);
 
-// ─────────────────────────────────────────
-// GET /tasks
-// Supports: filtering, pagination, search
-// ─────────────────────────────────────────
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const { tenantId } = req.user!;
+// The DB foreign keys are tenant-scoped, so a foreign assignee is rejected
+// there too; checking up front gives a clean 400 instead of a constraint error.
+async function assertAssigneeInTenant(db: Db, assigneeId: number, tenantId: number) {
+  const result = await db.query(
+    'SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+    [assigneeId, tenantId]
+  );
+  if (result.rows.length === 0) {
+    throw badRequest('Assignee not found in your organization');
+  }
+}
 
-    const { status, assignee, projectId, search, page = '1', limit = '10' } = req.query;
+// Shared SELECT for list + single. Joins are all tenant-constrained and tasks of
+// deleted projects are hidden.
+const TASK_SELECT = `
+  SELECT t.*,
+         p.name  AS project_name,
+         ten.slug AS tenant_slug,
+         u.email  AS assigned_to_email,
+         cb.email AS created_by_email
+    FROM tasks t
+    JOIN projects p    ON t.project_id = p.id AND p.tenant_id = t.tenant_id AND p.deleted_at IS NULL
+    LEFT JOIN tenants ten ON t.tenant_id = ten.id
+    LEFT JOIN users u   ON t.assigned_to = u.id AND u.tenant_id = t.tenant_id
+    LEFT JOIN users cb  ON t.created_by = cb.id AND cb.tenant_id = t.tenant_id`;
+
+// ─────────────────────────────────────────
+// GET /tasks — filter, search, paginate
+// ─────────────────────────────────────────
+router.get(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tenantId } = req.user!;
+    const { status, assignee, projectId, search, page, limit } = parse(
+      listTasksQuerySchema,
+      req.query
+    );
 
     const conditions: string[] = ['t.tenant_id = $1', 't.deleted_at IS NULL'];
-    const values: any[] = [tenantId];
-    let paramCount = 1;
+    const values: unknown[] = [tenantId];
+    const add = (sql: (n: number) => string, value: unknown) => {
+      values.push(value);
+      conditions.push(sql(values.length));
+    };
 
-    if (status) {
-      paramCount++;
-      conditions.push(`t.status = $${paramCount}`);
-      values.push(status);
-    }
-
-    if (assignee) {
-      paramCount++;
-      conditions.push(`t.assigned_to = $${paramCount}`);
-      values.push(assignee);
-    }
-
-    if (projectId) {
-      paramCount++;
-      conditions.push(`t.project_id = $${paramCount}`);
-      values.push(projectId);
-    }
-
+    if (status) add((n) => `t.status = $${n}`, status);
+    if (assignee) add((n) => `t.assigned_to = $${n}`, assignee);
+    if (projectId) add((n) => `t.project_id = $${n}`, projectId);
     if (search) {
-      paramCount++;
-      conditions.push(`(t.title ILIKE $${paramCount} OR t.description ILIKE $${paramCount})`);
-      values.push(`%${search}%`);
+      // Escape LIKE wildcards so "50%" searches for the literal text
+      const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+      add((n) => `(t.title ILIKE $${n} OR t.description ILIKE $${n})`, pattern);
     }
-
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
-    const offset = (pageNum - 1) * limitNum;
 
     const whereClause = conditions.join(' AND ');
+    const offset = (page - 1) * limit;
 
-    // Get total count
-    const countResult = await pool.query(
-      `SELECT COUNT(*) FROM tasks t WHERE ${whereClause}`,
-      values
-    );
+    const { total, tasks } = await withTenant(tenantId, async (db) => {
+      const countResult = await db.query(
+        `SELECT COUNT(*)::int AS count
+           FROM tasks t
+           JOIN projects p ON t.project_id = p.id AND p.tenant_id = t.tenant_id AND p.deleted_at IS NULL
+          WHERE ${whereClause}`,
+        values
+      );
 
-    const total = parseInt(countResult.rows[0].count);
+      const result = await db.query(
+        `${TASK_SELECT}
+          WHERE ${whereClause}
+          ORDER BY t.created_at DESC, t.id DESC
+          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, limit, offset]
+      );
 
-    paramCount++;
-    values.push(limitNum);
-    paramCount++;
-    values.push(offset);
-
-    // Get tasks with all related info
-    const result = await pool.query(
-      `SELECT t.*,
-              p.name as project_name,
-              ten.slug as tenant_slug,
-              u.email as assigned_to_email,
-              cb.email as created_by_email
-       FROM tasks t
-       LEFT JOIN projects p ON t.project_id = p.id
-       LEFT JOIN tenants ten ON t.tenant_id = ten.id
-       LEFT JOIN users u ON t.assigned_to = u.id
-       LEFT JOIN users cb ON t.created_by = cb.id
-       WHERE ${whereClause}
-       ORDER BY t.created_at DESC
-       LIMIT $${paramCount - 1} OFFSET $${paramCount}`,
-      values
-    );
-
-    return res.json({
-      tasks: result.rows,
-      pagination: {
-        total,
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
-      },
+      return { total: countResult.rows[0].count as number, tasks: result.rows };
     });
 
-  } catch (error) {
-    console.error('Get tasks error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    return res.json({
+      tasks,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  })
+);
 
 // ─────────────────────────────────────────
 // GET /tasks/:id
 // ─────────────────────────────────────────
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
+router.get(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!;
-    const { id } = req.params;
+    const { id } = parse(idParams, req.params);
 
-    const result = await pool.query(
-      `SELECT t.*,
-              p.name as project_name,
-              ten.slug as tenant_slug,
-              u.email as assigned_to_email,
-              cb.email as created_by_email
-       FROM tasks t
-       LEFT JOIN projects p ON t.project_id = p.id
-       LEFT JOIN tenants ten ON t.tenant_id = ten.id
-       LEFT JOIN users u ON t.assigned_to = u.id
-       LEFT JOIN users cb ON t.created_by = cb.id
-       WHERE t.id = $1
-       AND t.tenant_id = $2
-       AND t.deleted_at IS NULL`,
-      [id, tenantId]
-    );
+    const task = await withTenant(tenantId, async (db) => {
+      const result = await db.query(
+        `${TASK_SELECT} WHERE t.id = $1 AND t.tenant_id = $2 AND t.deleted_at IS NULL`,
+        [id, tenantId]
+      );
+      return result.rows[0];
+    });
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Not found',
-        message: 'Task not found'
-      });
-    }
-
-    return res.json({ task: result.rows[0] });
-
-  } catch (error) {
-    console.error('Get task error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    if (!task) throw notFound('Task not found');
+    return res.json({ task });
+  })
+);
 
 // ─────────────────────────────────────────
 // POST /tasks
 // ─────────────────────────────────────────
-router.post('/', async (req: Request, res: Response) => {
-  try {
+router.post(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!;
-
-    const result = createTaskSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: result.error.issues
-      });
-    }
-
-    const { title, description, status, priority, projectId, assignedTo, dueDate } = result.data;
-
-    // Verify project belongs to tenant
-    const project = await pool.query(
-      'SELECT id FROM projects WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [projectId, tenantId]
+    const { title, description, status, priority, projectId, assignedTo, dueDate } = parse(
+      createTaskSchema,
+      req.body
     );
 
-    if (project.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Not found',
-        message: 'Project not found'
-      });
-    }
+    const task = await withTenant(tenantId, async (db) => {
+      const project = await db.query(
+        'SELECT id FROM projects WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [projectId, tenantId]
+      );
+      if (project.rows.length === 0) throw notFound('Project not found');
 
-    const task = await pool.query(
-      `INSERT INTO tasks
-       (title, description, status, priority, project_id, tenant_id, assigned_to, due_date, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [title, description, status, priority, projectId, tenantId, assignedTo, dueDate, userId]
-    );
+      if (assignedTo) await assertAssigneeInTenant(db, assignedTo, tenantId);
 
-    return res.status(201).json({
-      message: 'Task created successfully',
-      task: task.rows[0]
+      const created = await db.query(
+        `INSERT INTO tasks
+           (title, description, status, priority, project_id, tenant_id, assigned_to, due_date, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          title,
+          description ?? null,
+          status,
+          priority ?? null,
+          projectId,
+          tenantId,
+          assignedTo ?? null,
+          dueDate ?? null,
+          userId,
+        ]
+      );
+      return created.rows[0];
     });
 
-  } catch (error) {
-    console.error('Create task error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    return res.status(201).json({ message: 'Task created successfully', task });
+  })
+);
 
 // ─────────────────────────────────────────
 // PATCH /tasks/:id
+// Partial update: absent key = unchanged, null = clear the field.
 // ─────────────────────────────────────────
-router.patch('/:id', async (req: Request, res: Response) => {
-  try {
+const UPDATABLE_COLUMNS = {
+  title: 'title',
+  description: 'description',
+  status: 'status',
+  priority: 'priority',
+  assignedTo: 'assigned_to',
+  dueDate: 'due_date',
+} as const;
+
+router.patch(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!;
-    const { id } = req.params;
+    const { id } = parse(idParams, req.params);
+    const changes = parse(updateTaskSchema, req.body);
 
-    const result = updateTaskSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: result.error.issues
-      });
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    for (const [key, column] of Object.entries(UPDATABLE_COLUMNS)) {
+      const value = changes[key as keyof typeof changes];
+      if (value !== undefined) {
+        values.push(value);
+        sets.push(`${column} = $${values.length}`);
+      }
     }
+    if (sets.length === 0) throw badRequest('No fields to update');
 
-    // Check task exists and belongs to tenant
-    const existing = await pool.query(
-      'SELECT id FROM tasks WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [id, tenantId]
-    );
+    const task = await withTenant(tenantId, async (db) => {
+      if (changes.assignedTo) await assertAssigneeInTenant(db, changes.assignedTo, tenantId);
 
-    if (existing.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Not found',
-        message: 'Task not found'
-      });
-    }
-
-    const { title, description, status, priority, assignedTo, dueDate } = result.data;
-
-    const task = await pool.query(
-      `UPDATE tasks
-       SET title = COALESCE($1, title),
-           description = COALESCE($2, description),
-           status = COALESCE($3, status),
-           priority = COALESCE($4, priority),
-           assigned_to = COALESCE($5, assigned_to),
-           due_date = COALESCE($6, due_date),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $7 AND tenant_id = $8
-       RETURNING *`,
-      [title, description, status, priority, assignedTo, dueDate, id, tenantId]
-    );
-
-    return res.json({
-      message: 'Task updated successfully',
-      task: task.rows[0]
+      values.push(id, tenantId);
+      const updated = await db.query(
+        `UPDATE tasks
+            SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $${values.length - 1} AND tenant_id = $${values.length} AND deleted_at IS NULL
+          RETURNING *`,
+        values
+      );
+      return updated.rows[0];
     });
 
-  } catch (error) {
-    console.error('Update task error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    if (!task) throw notFound('Task not found');
+    return res.json({ message: 'Task updated successfully', task });
+  })
+);
 
 // ─────────────────────────────────────────
-// DELETE /tasks/:id
+// DELETE /tasks/:id — soft delete (admin, creator or assignee)
 // ─────────────────────────────────────────
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    const { tenantId } = req.user!;
-    const { id } = req.params;
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tenantId, userId, role } = req.user!;
+    const { id } = parse(idParams, req.params);
 
-    const existing = await pool.query(
-      'SELECT id FROM tasks WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [id, tenantId]
-    );
+    await withTenant(tenantId, async (db) => {
+      const existing = await db.query(
+        'SELECT created_by, assigned_to FROM tasks WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [id, tenantId]
+      );
+      const task = existing.rows[0];
+      if (!task) throw notFound('Task not found');
 
-    if (existing.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Not found',
-        message: 'Task not found'
-      });
-    }
+      if (role !== 'admin' && task.created_by !== userId && task.assigned_to !== userId) {
+        throw forbidden('Only admins, the creator or the assignee can delete this task');
+      }
 
-    // Soft delete
-    await pool.query(
-      'UPDATE tasks SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2',
-      [id, tenantId]
-    );
+      await db.query(
+        'UPDATE tasks SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2',
+        [id, tenantId]
+      );
+    });
 
     return res.json({ message: 'Task deleted successfully' });
-
-  } catch (error) {
-    console.error('Delete task error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+  })
+);
 
 export default router;

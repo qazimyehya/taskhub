@@ -1,0 +1,211 @@
+/*
+ * Mobile / tablet layer.
+ * Most components are styled inline (which can't use media queries), so the
+ * rules below target classNames and use !important to win over inline styles.
+ * Desktop rendering is unchanged: everything is inside a max-width query.
+ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+/* The Vite template wraps the app in a 1126px bordered column; don't draw its
+   borders on screens that are narrower than that. */
+@media (max-width: 1126px) {
+  #root {
+    border-inline: none;
+  }
+}
+
+/* The Vite template centres all text at #root; app content reads better left-aligned
+   (anything that wants centring sets textAlign explicitly). */
+.app-main,
+.app-header__brand {
+  text-align: left;
+}
+
+/* Long emails / titles must wrap instead of forcing horizontal scroll */
+.task-card,
+.team-row,
+.project-card {
+  overflow-wrap: anywhere;
+}
+
+/* Status chips scroll sideways instead of wrapping onto several lines */
+.status-filters {
+  scrollbar-width: none;
+}
+.status-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.auth-page {
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* ── Tablet: stack the two-column projects layout ─────────────────────── */
+@media (max-width: 900px) {
+  .split-layout {
+    flex-direction: column !important;
+  }
+  .split-detail {
+    width: 100% !important;
+  }
+}
+
+/* ── Phones ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .app-main {
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Header: brand + user on the first row, nav on its own scrollable row */
+  .app-header {
+    flex-wrap: wrap !important;
+    padding: 10px 12px !important;
+    padding-top: calc(10px + env(safe-area-inset-top)) !important;
+    row-gap: 8px !important;
+  }
+  .app-header__left {
+    display: contents !important;
+  }
+  .app-header__brand {
+    order: 1;
+  }
+  .app-header__user {
+    order: 2;
+    gap: 10px !important;
+  }
+  .app-header__email {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app-header__nav {
+    order: 3;
+    flex: 1 1 100%;
+    overflow-x: auto;
+    gap: 4px !important;
+    scrollbar-width: none;
+  }
+  .app-header__nav::-webkit-scrollbar {
+    display: none;
+  }
+  .app-header__nav a {
+    flex: 1;
+    text-align: center;
+    padding: 10px 12px !important;
+    white-space: nowrap;
+  }
+
+  /* iOS zooms the page when a focused field is < 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  h2 {
+    font-size: 20px !important;
+  }
+
+  /* Search + status filters */
+  .filters-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .search-input {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .status-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    margin: 0 -12px;
+    padding: 0 12px 2px;
+  }
+  .status-filters button {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  /* Task card: actions move under the content as full-width buttons */
+  .task-card {
+    padding: 14px !important;
+  }
+  .task-card__row {
+    flex-direction: column !important;
+  }
+  .task-card__meta {
+    grid-template-columns: 1fr !important;
+  }
+  .task-card__actions {
+    flex-direction: row !important;
+    margin: 14px 0 0 !important;
+    width: 100%;
+  }
+  .task-card__actions button {
+    flex: 1;
+    padding: 10px 12px !important;
+    font-size: 14px !important;
+  }
+
+  /* Modal becomes a bottom sheet */
+  .modal-overlay {
+    align-items: flex-end !important;
+  }
+  .modal-card {
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom)) !important;
+    border-radius: 16px 16px 0 0 !important;
+    max-width: none !important;
+    max-height: 92vh !important;
+    max-height: 92dvh !important;
+  }
+
+  /* Auth cards */
+  .auth-card {
+    padding: 24px 18px !important;
+  }
+
+  /* Team list rows */
+  .team-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+  .team-row__actions {
+    flex-wrap: wrap;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+  }
+}
+
+/* Very narrow phones: two-column form rows become one column */
+@media (max-width: 400px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Comfortable touch targets on any touch device */
+@media (pointer: coarse) {
+  button,
+  select,
+  input:not([type='checkbox']):not([type='radio']) {
+    min-height: 40px;
+  }
+}

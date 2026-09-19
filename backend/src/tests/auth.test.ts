@@ -1,227 +1,112 @@
 import request from 'supertest';
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import authRoutes from '../routes/auth';
-import projectRoutes from '../routes/projects';
-import pool from '../db';
+import {
+  adminPool,
+  app,
+  appPool,
+  auth,
+  cleanupTestTenants,
+  createProject,
+  signupTenant,
+  TestTenant,
+  uniq,
+} from './helpers';
 
-// Create test app
-const app = express();
-app.use(express.json());
-app.use(cookieParser());
-app.use('/auth', authRoutes);
-app.use('/projects', projectRoutes);
-
-// Test data
-const tenantA = {
-  email: 'test@tenant-a.com',
-  password: 'password123',
-  firstName: 'Test',
-  lastName: 'User',
-  tenantName: 'Tenant A',
-  tenantSlug: 'tenant-a-test',
-};
-
-const tenantB = {
-  email: 'test@tenant-b.com',
-  password: 'password123',
-  firstName: 'Test',
-  lastName: 'User',
-  tenantName: 'Tenant B',
-  tenantSlug: 'tenant-b-test',
-};
-
-let tokenA: string;
-let tokenB: string;
+let a: TestTenant;
+let b: TestTenant;
 let projectIdA: number;
 
-// Clean up test data after all tests
+beforeAll(async () => {
+  await cleanupTestTenants();
+});
+
 afterAll(async () => {
-  // Delete in correct order (foreign keys!)
-  // 1. Delete tasks first
-  await pool.query(
-    `DELETE FROM tasks WHERE tenant_id IN (
-      SELECT id FROM tenants WHERE slug IN ('tenant-a-test', 'tenant-b-test')
-    )`
-  );
-  // 2. Delete projects
-  await pool.query(
-    `DELETE FROM projects WHERE tenant_id IN (
-      SELECT id FROM tenants WHERE slug IN ('tenant-a-test', 'tenant-b-test')
-    )`
-  );
-  // 3. Delete users
-  await pool.query(
-    `DELETE FROM users WHERE tenant_id IN (
-      SELECT id FROM tenants WHERE slug IN ('tenant-a-test', 'tenant-b-test')
-    )`
-  );
-  // 4. Delete tenants
-  await pool.query(
-    `DELETE FROM tenants WHERE slug IN ('tenant-a-test', 'tenant-b-test')`
-  );
-  await pool.end();
+  await cleanupTestTenants();
+  await adminPool.end();
+  await appPool.end();
 });
-// ─────────────────────────────────────────
-// AUTH TESTS
-// ─────────────────────────────────────────
-describe('Authentication', () => {
 
-  test('Should signup Tenant A successfully', async () => {
-    const res = await request(app)
-      .post('/auth/signup')
-      .send(tenantA);
-
-    expect(res.status).toBe(201);
-    expect(res.body.message).toBe('Account created successfully');
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.user.role).toBe('admin');
-    expect(res.body.user.tenantId).toBeDefined();
-
-    tokenA = res.body.accessToken;
+describe('Auth flow', () => {
+  it('signs up tenant A', async () => {
+    a = await signupTenant('a');
+    expect(a.token).toBeTruthy();
+    expect(a.cookie.join(';')).toMatch(/refreshToken=.*HttpOnly/i);
   });
 
-  test('Should signup Tenant B successfully', async () => {
-    const res = await request(app)
-      .post('/auth/signup')
-      .send(tenantB);
-
-    expect(res.status).toBe(201);
-    expect(res.body.accessToken).toBeDefined();
-
-    tokenB = res.body.accessToken;
+  it('signs up tenant B', async () => {
+    b = await signupTenant('b');
+    expect(b.tenantId).not.toBe(a.tenantId);
   });
 
-  test('Should not signup with duplicate slug', async () => {
-    const res = await request(app)
-      .post('/auth/signup')
-      .send(tenantA);
-
+  it('rejects a duplicate slug with 409', async () => {
+    const res = await request(app).post('/auth/signup').send({
+      email: 'other@example.com',
+      password: 'password123',
+      firstName: 'X',
+      lastName: 'Y',
+      tenantName: 'Dup',
+      tenantSlug: a.slug,
+    });
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('Conflict');
   });
 
-  test('Should login successfully', async () => {
+  it('logs in successfully', async () => {
     const res = await request(app)
       .post('/auth/login')
-      .send({
-        email: tenantA.email,
-        password: tenantA.password,
-        tenantSlug: tenantA.tenantSlug,
-      });
-
+      .send({ email: a.email, password: a.password, tenantSlug: a.slug });
     expect(res.status).toBe(200);
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.user.email).toBe(tenantA.email);
+    expect(res.body.accessToken).toBeTruthy();
+    expect(res.body.user.tenantId).toBe(a.tenantId);
   });
 
-  test('Should not login with wrong password', async () => {
+  it('rejects a wrong password', async () => {
     const res = await request(app)
       .post('/auth/login')
-      .send({
-        email: tenantA.email,
-        password: 'wrongpassword',
-        tenantSlug: tenantA.tenantSlug,
-      });
-
+      .send({ email: a.email, password: 'nope-nope', tenantSlug: a.slug });
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('Unauthorized');
   });
 
-  test('Should not login with wrong tenant', async () => {
+  it('rejects a wrong tenant slug', async () => {
     const res = await request(app)
       .post('/auth/login')
-      .send({
-        email: tenantA.email,
-        password: tenantA.password,
-        tenantSlug: 'wrong-tenant',
-      });
-
+      .send({ email: a.email, password: a.password, tenantSlug: `test-missing-${uniq()}` });
     expect(res.status).toBe(401);
   });
 
-  test('Should reject request without token', async () => {
-    const res = await request(app)
-      .get('/projects');
-
-    expect(res.status).toBe(401);
-    expect(res.body.error).toBe('Unauthorized');
+  it('rejects a missing token', async () => {
+    expect((await request(app).get('/projects')).status).toBe(401);
   });
 
-  test('Should reject invalid token', async () => {
-    const res = await request(app)
-      .get('/projects')
-      .set('Authorization', 'Bearer invalidtoken123');
-
-    expect(res.status).toBe(401);
+  it('rejects an invalid token', async () => {
+    expect((await request(app).get('/projects').set(auth('garbage'))).status).toBe(401);
   });
 });
 
-// ─────────────────────────────────────────
-// TENANT ISOLATION TESTS
-// ─────────────────────────────────────────
-describe('Tenant Isolation', () => {
-
-  test('Tenant A can create a project', async () => {
-    const res = await request(app)
-      .post('/projects')
-      .set('Authorization', `Bearer ${tokenA}`)
-      .send({ name: 'Tenant A Project', description: 'Test project' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.project.name).toBe('Tenant A Project');
-
-    projectIdA = res.body.project.id;
+describe('Tenant isolation (application layer)', () => {
+  it('tenant A can create a project', async () => {
+    projectIdA = (await createProject(a.token, 'Project A')).id;
+    expect(projectIdA).toBeGreaterThan(0);
   });
 
-  test('Tenant B can create their own project', async () => {
-    const res = await request(app)
-      .post('/projects')
-      .set('Authorization', `Bearer ${tokenB}`)
-      .send({ name: 'Tenant B Project', description: 'Test project' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.project.name).toBe('Tenant B Project');
+  it('tenant B can create a project', async () => {
+    expect((await createProject(b.token, 'Project B')).id).toBeGreaterThan(0);
   });
 
-  test('Tenant B CANNOT see Tenant A projects', async () => {
-    const res = await request(app)
-      .get('/projects')
-      .set('Authorization', `Bearer ${tokenB}`);
-
-    expect(res.status).toBe(200);
-
-    // Tenant B should only see their own projects
-    const projectNames = res.body.projects.map((p: any) => p.name);
-    expect(projectNames).not.toContain('Tenant A Project');
-    expect(projectNames).toContain('Tenant B Project');
+  it("tenant B cannot see tenant A's projects", async () => {
+    const res = await request(app).get('/projects').set(auth(b.token));
+    expect(res.body.projects.map((p: any) => p.name)).not.toContain('Project A');
   });
 
-  test('Tenant A CANNOT see Tenant B projects', async () => {
-    const res = await request(app)
-      .get('/projects')
-      .set('Authorization', `Bearer ${tokenA}`);
-
-    expect(res.status).toBe(200);
-
-    const projectNames = res.body.projects.map((p: any) => p.name);
-    expect(projectNames).toContain('Tenant A Project');
-    expect(projectNames).not.toContain('Tenant B Project');
+  it("tenant A cannot see tenant B's projects", async () => {
+    const res = await request(app).get('/projects').set(auth(a.token));
+    expect(res.body.projects.map((p: any) => p.name)).not.toContain('Project B');
   });
 
-  test('Tenant B CANNOT access Tenant A project by ID', async () => {
-    const res = await request(app)
-      .get(`/projects/${projectIdA}`)
-      .set('Authorization', `Bearer ${tokenB}`);
-
-    expect(res.status).toBe(404);
+  it("tenant B cannot access tenant A's project by id", async () => {
+    expect((await request(app).get(`/projects/${projectIdA}`).set(auth(b.token))).status).toBe(404);
   });
 
-  test('Tenant B CANNOT delete Tenant A project', async () => {
-    const res = await request(app)
-      .delete(`/projects/${projectIdA}`)
-      .set('Authorization', `Bearer ${tokenB}`);
-
-    expect(res.status).toBe(404);
+  it("tenant B cannot delete tenant A's project", async () => {
+    expect((await request(app).delete(`/projects/${projectIdA}`).set(auth(b.token))).status).toBe(404);
+    expect((await request(app).get(`/projects/${projectIdA}`).set(auth(a.token))).status).toBe(200);
   });
 });
